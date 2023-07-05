@@ -55,7 +55,7 @@ class Generator(nn.Sequential):
 
 class Discriminator(nn.Sequential):
     def __init__(self, in_channels, n_layers=5, input_size=256):
-        prev_filt = 16
+        prev_filt = 8
         layers = []
         for i in range(n_layers):
             layers.append(DownConvLayer(prev_filt if i > 0 else in_channels, prev_filt * 2, activation='leakyrelu',

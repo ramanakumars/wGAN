@@ -63,8 +63,9 @@ class Trainer:
 
         disc_real = self.discriminator(input_tensor)
 
-        w_dist = wasserstein_distance(disc_real, disc_fake.detach())
-        d_regularizer = gradient_penalty(self.discriminator, input_tensor, x_gen.detach())
+        disc_fake = self.discriminator(x_gen.detach())
+        w_dist = wasserstein_distance(disc_real, disc_fake)
+        d_regularizer = gradient_penalty(self.discriminator, input_tensor, x_gen)
 
         disc_loss = w_dist + self.gradient_weight * d_regularizer
 
@@ -80,7 +81,7 @@ class Trainer:
 
         return loss
 
-    def train(self, train_data, val_data, epochs, dsc_learning_rate=1.e-4,
+    def train(self, train_data, val_data, epochs, dsc_learning_rate=1.e-3,
               gen_learning_rate=1.e-3, save_freq=10, lr_decay=None, decay_freq=5,
               reduce_on_plateau=False):
         '''
