@@ -134,9 +134,9 @@ class Trainer:
 
         # create the Adam optimzers
         self.gen_optimizer = optim.NAdam(
-            self.generator.parameters(), lr=gen_lr, betas=(0.9, 0.99))
+            self.generator.parameters(), lr=gen_lr, betas=(0.9, 0.999))
         self.disc_optimizer = optim.NAdam(
-            self.discriminator.parameters(), lr=dsc_lr, betas=(0.9, 0.99))
+            self.discriminator.parameters(), lr=dsc_lr, betas=(0.9, 0.999))
 
         # set up the learning rate scheduler with exponential lr decay
         if reduce_on_plateau:

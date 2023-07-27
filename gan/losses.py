@@ -1,8 +1,5 @@
 import torch
-from torch import nn
-
-# alias
-adv_loss = nn.BCELoss()
+from einops import rearrange
 
 
 def wasserstein_distance(logits_x, logits_x_gen):
@@ -28,7 +25,7 @@ def gradient_penalty(discrim, real_data, generated_data):
 
     # Gradients have shape (batch_size, num_channels, img_width, img_height),
     # so flatten to easily take norm per example in batch
-    gradients = gradients.view(batch_size, -1)
+    gradients = rearrange(gradients, "b c h w -> b (c h w)")
 
     # Derivatives of the gradient close to 0 can cause problems because of
     # the square root, so manually calculate norm and add epsilon
