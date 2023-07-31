@@ -33,12 +33,12 @@ class DownConvLayer(nn.Sequential):
 
 
 class Generator(nn.Sequential):
-    def __init__(self, n_z, norm=False, n_layers=5, out_channels=3, final_size=256):
+    def __init__(self, n_z, input_filt=512, norm=False, n_layers=5, out_channels=3, final_size=256):
         self.n_z = n_z
 
         layers = []
 
-        prev_filt = 512
+        prev_filt = input_filt
         for _ in range(n_layers):
             layers.append(UpConvLayer(prev_filt, int(prev_filt / 2), activation='leakyrelu', norm=norm,
                                       kernel_size=(6, 6), stride=(2, 2), padding=2))
@@ -51,9 +51,9 @@ class Generator(nn.Sequential):
         initial_size = int(initial_size)
 
         super().__init__(
-            nn.Linear(n_z, initial_size * initial_size * 512),
+            nn.Linear(n_z, initial_size * initial_size * input_filt),
             nn.LeakyReLU(0.2, True),
-            Rearrange('b (h w z) -> b z h w', h=initial_size, w=initial_size, z=512),
+            Rearrange('b (h w z) -> b z h w', h=initial_size, w=initial_size, z=input_filt),
             *layers,
             nn.Conv2d(prev_filt, out_channels, (5, 5), stride=(1, 1), padding=2),
             nn.Sigmoid()
