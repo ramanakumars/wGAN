@@ -46,7 +46,7 @@ class Trainer:
         '''
 
         if not isinstance(x, torch.Tensor):
-            input_tensor = torch.as_tensort(x, dtype=torch.float).to(self.device)
+            input_tensor = torch.as_tensor(x, dtype=torch.float).to(self.device)
         else:
             input_tensor = x.to(self.device, non_blocking=True)
 
