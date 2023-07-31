@@ -180,6 +180,8 @@ class Trainer:
             losses = defaultdict(list)
             # loop through the training data
             for i, input_img in enumerate(pbar):
+                if isinstance(input_img, (list, tuple)):
+                    input_img = input_img[0]
 
                 # train on this batch
                 batch_loss = self.batch(input_img, train=True)
@@ -213,7 +215,9 @@ class Trainer:
             losses = defaultdict(list)
             # loop through the training data
             for i, input_img in enumerate(pbar):
-
+                if isinstance(input_img, (list, tuple)):
+                    input_img = input_img[0]
+                    
                 # train on this batch
                 batch_loss = self.batch(input_img, train=False)
 
