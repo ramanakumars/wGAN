@@ -118,7 +118,7 @@ class Trainer:
                 Discriminator loss history as a function of the epochs
         '''
 
-        if (lr_decay is not None) and not reduce_on_plateau:
+        if (lr_decay is not None):
             gen_lr = gen_learning_rate * (lr_decay)**((self.start - 1) / (decay_freq))
             dsc_lr = dsc_learning_rate * (lr_decay)**((self.start - 1) / (decay_freq))
         else:
