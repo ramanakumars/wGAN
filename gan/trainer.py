@@ -5,7 +5,7 @@ import numpy as np
 import glob
 from collections import defaultdict
 from torch import optim
-from torch.optim.lr_scheduler import ExponentialLR, ReduceLROnPlateau
+from torch.optim.lr_scheduler import ExponentialLR
 from .losses import wasserstein_distance, gradient_penalty
 
 
@@ -82,8 +82,7 @@ class Trainer:
         return loss
 
     def train(self, train_data, val_data, epochs, dsc_learning_rate=1.e-3,
-              gen_learning_rate=1.e-3, save_freq=10, lr_decay=None, decay_freq=5,
-              reduce_on_plateau=False):
+              gen_learning_rate=1.e-3, save_freq=10, lr_decay=None, decay_freq=5):
         '''
             Training driver which loads the optimizer and calls the
             `train_batch` method. Also handles checkpoint saving
@@ -139,11 +138,7 @@ class Trainer:
             self.discriminator.parameters(), lr=dsc_lr, betas=(0.9, 0.999))
 
         # set up the learning rate scheduler with exponential lr decay
-        if reduce_on_plateau:
-            gen_scheduler = ReduceLROnPlateau(self.gen_optimizer, verbose=True)
-            dsc_scheduler = ReduceLROnPlateau(self.disc_optimizer, verbose=True)
-            self.neptune_config['model/parameters/scheduler'] = 'ReduceLROnPlateau'
-        elif lr_decay is not None:
+        if lr_decay is not None:
             gen_scheduler = ExponentialLR(self.gen_optimizer, gamma=lr_decay)
             dsc_scheduler = ExponentialLR(self.disc_optimizer, gamma=lr_decay)
             if self.neptune_config is not None:
@@ -240,9 +235,6 @@ class Trainer:
                     if epoch % decay_freq == 0:
                         gen_scheduler.step()
                         dsc_scheduler.step()
-                else:
-                    gen_scheduler.step(loss_mean['gen'])
-                    dsc_scheduler.step(loss_mean['disc'])
 
             # save checkpoints
             if epoch % save_freq == 0:
