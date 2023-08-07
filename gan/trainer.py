@@ -46,7 +46,7 @@ class Trainer:
         '''
 
         if not isinstance(x, torch.Tensor):
-            input_tensor = torch.as_tensort(x, dtype=torch.float).to(self.device)
+            input_tensor = torch.as_tensor(x, dtype=torch.float).to(self.device)
         else:
             input_tensor = x.to(self.device, non_blocking=True)
 
@@ -180,7 +180,7 @@ class Trainer:
             losses = defaultdict(list)
             # loop through the training data
             for i, input_img in enumerate(pbar):
-                if isinstance(input_img, tuple):
+                if isinstance(input_img, (list, tuple)):
                     input_img = input_img[0]
 
                 # train on this batch
@@ -215,7 +215,7 @@ class Trainer:
             losses = defaultdict(list)
             # loop through the training data
             for i, input_img in enumerate(pbar):
-                if isinstance(input_img, tuple):
+                if isinstance(input_img, (list, tuple)):
                     input_img = input_img[0]
 
                 # train on this batch
