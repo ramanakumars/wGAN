@@ -65,9 +65,9 @@ class Trainer:
 
         disc_fake = self.discriminator(x_gen.detach())
         w_dist = wasserstein_distance(disc_real, disc_fake)
-        d_regularizer = gradient_penalty(self.discriminator, input_tensor, x_gen)
+        d_regularizer = gradient_penalty(self.discriminator, input_tensor, x_gen) * self.gradient_weight
 
-        disc_loss = w_dist + self.gradient_weight * d_regularizer
+        disc_loss = w_dist + d_regularizer
 
         if train:
             self.discriminator.zero_grad()
@@ -180,6 +180,8 @@ class Trainer:
             losses = defaultdict(list)
             # loop through the training data
             for i, input_img in enumerate(pbar):
+                if isinstance(input_img, tuple):
+                    input_img = input_img[0]
 
                 # train on this batch
                 batch_loss = self.batch(input_img, train=True)
@@ -213,6 +215,8 @@ class Trainer:
             losses = defaultdict(list)
             # loop through the training data
             for i, input_img in enumerate(pbar):
+                if isinstance(input_img, tuple):
+                    input_img = input_img[0]
 
                 # train on this batch
                 batch_loss = self.batch(input_img, train=False)
@@ -288,16 +292,11 @@ class Trainer:
         print(
             f"Loaded checkpoints from {gfname} and {dfname}")
 
-# custom weights initialization called on generator and discriminator
-# scaling here means std
 
-
-def weights_init(net, init_type='normal', scaling=0.02):
+def weights_init(net):
     """Initialize network weights.
     Parameters:
         net (network)   -- network to be initialized
-        init_type (str) -- the name of an initialization method: normal | xavier | kaiming | orthogonal
-        init_gain (float)    -- scaling factor for normal, xavier and orthogonal.
     We use 'normal' in the original pix2pix and CycleGAN paper. But xavier and kaiming might
     work better for some applications. Feel free to try yourself.
     """
@@ -306,6 +305,6 @@ def weights_init(net, init_type='normal', scaling=0.02):
         if hasattr(m, 'weight') and (classname.find('Conv')) != -1:
             torch.nn.init.xavier_uniform_(m.weight.data)
         # BatchNorm Layer's weight is not a matrix; only normal distribution applies.
-        elif classname.find('BatchNorm') != -1:
+        elif classname.find('InstanceNorm') != -1:
             torch.nn.init.xavier_uniform_(m.weight.data, 1.0)
             torch.nn.init.constant_(m.bias.data, 0.0)
