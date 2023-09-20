@@ -7,11 +7,10 @@ from torchvision.transforms import Resize
 
 
 class ImageDataset(Dataset):
-    resize = Resize((256, 256))
-
-    def __init__(self, imgfolder, label_file):
+    def __init__(self, imgfolder, label_file, size=256):
         self.imgfolder = imgfolder
         self.labels = pd.read_csv(label_file)
+        self.resize = Resize((size, size))
 
         self.subject_ids = np.asarray(self.labels.subject_id)
 
