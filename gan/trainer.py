@@ -132,10 +132,10 @@ class Trainer:
             self.neptune_config['model/parameters/n_epochs'] = epochs
 
         # create the Adam optimzers
-        self.gen_optimizer = optim.NAdam(
-            self.generator.parameters(), lr=gen_lr, betas=(0.9, 0.999))
-        self.disc_optimizer = optim.NAdam(
-            self.discriminator.parameters(), lr=dsc_lr, betas=(0.9, 0.999))
+        self.gen_optimizer = optim.Adam(
+            self.generator.parameters(), lr=gen_lr)
+        self.disc_optimizer = optim.Adam(
+            self.discriminator.parameters(), lr=dsc_lr)
 
         # set up the learning rate scheduler with exponential lr decay
         if lr_decay is not None:
