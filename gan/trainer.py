@@ -7,6 +7,8 @@ from collections import defaultdict
 from torch import optim
 from torch.optim.lr_scheduler import ExponentialLR
 from .losses import wasserstein_distance, gradient_penalty
+from .model import Generator, Discriminator, Encoder
+import lightning as L
 
 
 class Trainer:
@@ -283,6 +285,166 @@ class Trainer:
         dfname = discriminator_save.split('/')[-1]
         print(
             f"Loaded checkpoints from {gfname} and {dfname}")
+
+
+class GAN(L.LightningModule):
+    def __init__(self, n_z: int, image_size: int, img_channels: int, n_gen_layers: int,
+                 n_dsc_layers: int, input_filt: int, gen_lr: float = 1.e-3, dsc_lr: float = 1.e-3,
+                 gradient_weight: float = 10., lr_decay: float = 0.98, decay_freq: int = 5):
+        super().__init__()
+        self.save_hyperparameters()
+        self.automatic_optimization = False
+
+        self.generator = Generator(n_z=n_z, input_filt=input_filt, norm=True,
+                                   n_layers=n_gen_layers, out_channels=img_channels, final_size=image_size)
+        self.discriminator = Discriminator(in_channels=img_channels, n_layers=n_dsc_layers, input_size=image_size)
+
+    def forward(self, z):
+        return self.generator(z)
+
+    def training_step(self, batch):
+        optimizer_g, optimizer_d = self.optimizers()
+
+        z_samp = torch.randn((batch.shape[0], self.hparams.n_z))
+        z_samp = z_samp.type_as(batch)
+        x_gen = self(z_samp)
+
+        disc_fake = self.discriminator(x_gen)
+        gen_loss = -torch.mean(disc_fake)
+
+        self.toggle_optimizer(optimizer_g)
+        optimizer_g.zero_grad()
+        self.manual_backward(gen_loss)
+        optimizer_g.step()
+        self.untoggle_optimizer(optimizer_g)
+
+        disc_real = self.discriminator(batch)
+
+        disc_fake = self.discriminator(x_gen.detach())
+        w_dist = wasserstein_distance(disc_real, disc_fake)
+        d_regularizer = gradient_penalty(self.discriminator, batch, x_gen) * self.hparams.gradient_weight
+
+        disc_loss = w_dist + d_regularizer
+
+        self.toggle_optimizer(optimizer_d)
+        optimizer_d.zero_grad()
+        self.manual_backward(disc_loss)
+        optimizer_d.step()
+        self.untoggle_optimizer(optimizer_d)
+
+        keys = ['gen', 'disc', 'w_dist', 'grad_penalty']
+        mean_loss_i = [gen_loss.item(), disc_loss.item(), w_dist.item(), d_regularizer.item()]
+
+        sch_g, sch_d = self.lr_schedulers()
+        if self.trainer.is_last_batch and (self.trainer.current_epoch + 1) % self.hparams.decay_freq == 0:
+            sch_g.step()
+            sch_d.step()
+
+        for key, val in zip(keys, mean_loss_i):
+            self.log(key, val, prog_bar=True, on_epoch=True, reduce_fx=torch.mean)
+
+    def validation_step(self, batch, batch_idx):
+        torch.set_grad_enabled(True)
+
+        z_samp = torch.randn((batch.shape[0], self.hparams.n_z))
+        z_samp = z_samp.type_as(batch)
+        x_gen = self(z_samp)
+
+        disc_fake = self.discriminator(x_gen)
+        gen_loss = -torch.mean(disc_fake)
+
+        disc_real = self.discriminator(batch)
+
+        disc_fake = self.discriminator(x_gen.detach())
+        w_dist = wasserstein_distance(disc_real, disc_fake)
+        d_regularizer = gradient_penalty(self.discriminator, batch, x_gen) * self.hparams.gradient_weight
+
+        disc_loss = w_dist + d_regularizer
+
+        keys = ['gen', 'disc', 'w_dist', 'grad_penalty']
+        mean_loss_i = [gen_loss.item(), disc_loss.item(), w_dist.item(), d_regularizer.item()]
+
+        for key, val in zip(keys, mean_loss_i):
+            self.log(key, val, prog_bar=True, on_epoch=True, reduce_fx=torch.mean)
+
+    def configure_optimizers(self):
+        gen_lr = self.hparams.gen_lr
+        dsc_lr = self.hparams.dsc_lr
+
+        opt_g = torch.optim.Adam(self.generator.parameters(), lr=gen_lr)
+        opt_d = torch.optim.Adam(self.discriminator.parameters(), lr=dsc_lr)
+
+        gen_lr_scheduler = ExponentialLR(opt_g, gamma=self.hparams.lr_decay)
+        dsc_lr_scheduler = ExponentialLR(opt_d, gamma=self.hparams.lr_decay)
+
+        gen_lr_scheduler_config = {"scheduler": gen_lr_scheduler,
+                                   "interval": "epoch",
+                                   "frequency": self.hparams.decay_freq}
+
+        dsc_lr_scheduler_config = {"scheduler": dsc_lr_scheduler,
+                                   "interval": "epoch",
+                                   "frequency": self.hparams.decay_freq}
+
+        return [{"optimizer": opt_g, "lr_scheduler": gen_lr_scheduler_config},
+                {"optimizer": opt_d, "lr_scheduler": dsc_lr_scheduler_config}]
+
+
+class EncoderModel(L.LightningModule):
+    def __init__(self, n_z: int, image_size: int, img_channels: int, n_gen_layers: int,
+                 n_dsc_layers: int, input_filt: int, gen_lr: float = 1.e-3, dsc_lr: float = 1.e-3,
+                 lam: float = 0.3, lr_decay: float = 0.98, decay_freq: int = 5):
+        super().__init__()
+        self.save_hyperparameters()
+
+        self.generator = Generator(n_z=n_z, input_filt=input_filt, norm=True,
+                                   n_layers=n_gen_layers, out_channels=img_channels, final_size=image_size)
+        self.discriminator = Discriminator(in_channels=img_channels, n_layers=n_dsc_layers, input_size=image_size)
+
+        # freeze the generator and discriminator
+        for params in self.generator.parameters():
+            params.requires_grad = False
+
+        for params in self.discriminator.parameters():
+            params.requires_grad = False
+
+        self.encoder = Encoder.from_generator(self.generator)
+
+    def forward(self, img):
+        return self.encoder(img)
+
+    def training_step(self, batch):
+        lambda_weight = self.hparams.lam
+
+        z = self(batch)
+        real_feat = self.discriminator.get_features(batch)
+        gen_img = self.generator(z)
+        gen_feat = self.discriminator.get_features(gen_img)
+
+        feature_residual = torch.mean(torch.pow(gen_feat - real_feat, 2))
+        residual = torch.mean(torch.pow(batch - gen_img, 2))
+
+        loss = (1 - lambda_weight) * residual + lambda_weight * feature_residual
+
+        self.log("loss", loss, prog_bar=True)
+
+        return loss
+
+    def validation_step(self, batch, batch_idx):
+        self.training_step(batch)
+
+    def configure_optimizers(self):
+        opt = torch.optim.Adam(self.encoder.parameters(), lr=self.hparams.lr)
+
+        decay_freq = self.hparams.decay_freq
+        lr_decay = self.hparams.lr_decay
+
+        lr_scheduler = ExponentialLR(opt, gamma=lr_decay)
+
+        lr_scheduler_config = {"scheduler": lr_scheduler,
+                               "interval": "epoch",
+                               "frequency": decay_freq}
+
+        return {"optimizer": opt, "lr_scheduler": lr_scheduler_config}
 
 
 def weights_init(net):
