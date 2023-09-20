@@ -66,7 +66,7 @@ class Discriminator(nn.Sequential):
         layers = []
         for i in range(n_layers):
             layers.append(DownConvLayer(prev_filt if i > 0 else in_channels, prev_filt * 2, activation='leakyrelu',
-                                        kernel_size=(6, 6), stride=(2, 2), padding=2))
+                                        kernel_size=(6, 6), stride=(2, 2), padding=2, norm=False))
             prev_filt = prev_filt * 2
             input_size = input_size / 2
 
