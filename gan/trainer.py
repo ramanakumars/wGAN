@@ -290,7 +290,8 @@ class Trainer:
 class GAN(L.LightningModule):
     def __init__(self, n_z: int, image_size: int, img_channels: int, n_gen_layers: int,
                  n_dsc_layers: int, input_filt: int, gen_lr: float = 1.e-3, dsc_lr: float = 1.e-3,
-                 gradient_weight: float = 10., lr_decay: float = 0.98, decay_freq: int = 5):
+                 gradient_weight: float = 10., lr_decay: float = 0.98, decay_freq: int = 5,
+                 b1: float = 0.5, b2: float = 0.9):
         super().__init__()
         self.save_hyperparameters()
         self.automatic_optimization = False
@@ -371,8 +372,8 @@ class GAN(L.LightningModule):
         gen_lr = self.hparams.gen_lr
         dsc_lr = self.hparams.dsc_lr
 
-        opt_g = torch.optim.Adam(self.generator.parameters(), lr=gen_lr)
-        opt_d = torch.optim.Adam(self.discriminator.parameters(), lr=dsc_lr)
+        opt_g = torch.optim.Adam(self.generator.parameters(), lr=gen_lr, betas=(self.hparams.b1, self.hparams.b2))
+        opt_d = torch.optim.Adam(self.discriminator.parameters(), lr=dsc_lr, betas=(self.hparams.b1, self.hparams.b2))
 
         gen_lr_scheduler = ExponentialLR(opt_g, gamma=self.hparams.lr_decay)
         dsc_lr_scheduler = ExponentialLR(opt_d, gamma=self.hparams.lr_decay)
@@ -390,15 +391,15 @@ class GAN(L.LightningModule):
 
 
 class EncoderModel(L.LightningModule):
-    def __init__(self, n_z: int, image_size: int, img_channels: int, n_gen_layers: int,
-                 n_dsc_layers: int, input_filt: int, gen_lr: float = 1.e-3, dsc_lr: float = 1.e-3,
+    def __init__(self, gan_checkpoint: str, lr: float = 1.e-3, b1: float = 0.5, b2: float = 0.9,
                  lam: float = 0.3, lr_decay: float = 0.98, decay_freq: int = 5):
         super().__init__()
-        self.save_hyperparameters()
+        self.save_hyperparameters(ignore=['gan_checkpoint'])
 
-        self.generator = Generator(n_z=n_z, input_filt=input_filt, norm=True,
-                                   n_layers=n_gen_layers, out_channels=img_channels, final_size=image_size)
-        self.discriminator = Discriminator(in_channels=img_channels, n_layers=n_dsc_layers, input_size=image_size)
+        gan = GAN.load_from_checkpoint(gan_checkpoint)
+
+        self.generator = gan.generator
+        self.discriminator = gan.discriminator
 
         # freeze the generator and discriminator
         for params in self.generator.parameters():
@@ -420,12 +421,14 @@ class EncoderModel(L.LightningModule):
         gen_img = self.generator(z)
         gen_feat = self.discriminator.get_features(gen_img)
 
-        feature_residual = torch.mean(torch.pow(gen_feat - real_feat, 2))
-        residual = torch.mean(torch.pow(batch - gen_img, 2))
+        feature_residual = torch.sum(torch.mean(torch.pow(gen_feat - real_feat, 2), dim=0))
+        residual = torch.sum(torch.mean(torch.abs(batch - gen_img), dim=0))
 
         loss = (1 - lambda_weight) * residual + lambda_weight * feature_residual
 
-        self.log("loss", loss, prog_bar=True)
+        self.log("img", residual, prog_bar=True, on_epoch=True, reduce_fx=torch.mean)
+        self.log("feat", feature_residual, prog_bar=True, on_epoch=True, reduce_fx=torch.mean)
+        self.log("loss", loss, on_epoch=True, reduce_fx=torch.mean, prog_bar=True)
 
         return loss
 
@@ -433,7 +436,7 @@ class EncoderModel(L.LightningModule):
         self.training_step(batch)
 
     def configure_optimizers(self):
-        opt = torch.optim.Adam(self.encoder.parameters(), lr=self.hparams.lr)
+        opt = torch.optim.Adam(self.encoder.parameters(), lr=self.hparams.lr, betas=(self.hparams.b1, self.hparams.b2))
 
         decay_freq = self.hparams.decay_freq
         lr_decay = self.hparams.lr_decay
